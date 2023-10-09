@@ -1,0 +1,11 @@
+name: 'JMeter_Results_Processing'
+description : 'Script to add file to page'
+inputs: 
+  results_file:
+    description: 'CSV Results File'
+    required: true
+  debug: 
+    description: 'Debug enabled?'
+    required: false
+    default: 'false'
+  jmeter_jar
