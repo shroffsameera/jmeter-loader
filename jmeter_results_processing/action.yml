@@ -8,4 +8,156 @@ inputs:
     description: 'Debug enabled?'
     required: false
     default: 'false'
-  jmeter_jar
+  jmeter_jar: 
+    description: 'Location of Jmeter jar'
+    required: false
+    default: './apache-jmeter-5.6.2/bin/ApacheJMeter.jar'
+  jmeter_cmdrunner: 
+    description: 'Location of Jmeter command runner'
+    required: false
+    default: './apache-jmeter-5.6.2/lib/cmdrunner-2.3.jar'
+  results_folder:
+    description: ' Folder to be created to store results'
+    required: false
+    default: 'results_html'
+  graphs_folder: 
+    description: 'Folder to be created to store Results'
+    required: false
+    default: 'graphs'
+  graphs_size_x: 
+    description: 'Graph X axis in pixels'
+    required: false
+    default: 800
+  graphs_size_y: 
+    description: 'Graph X axis in pixels'
+    required: false
+    default: 800
+  graph_granularity:
+    description: 'Resolution of graph in milliseconds'
+    required: false
+    default: 60000
+  html_report_output_name: 
+    description: 'HTML Report name'
+    required: false
+    default: 'report'
+  csv_aggregate_report_output_name:
+    description: 'Output name of Aggregate Report CSV'
+    required: false
+    default: 'aggregate_report.csv'
+  html_aggregate_report_output_name:
+    description: 'Output name of Aggregate Report HTML table'
+    required: false
+    default: 'aggregate_report.html'
+  property_file: 
+    description: 'user.properties file to be used'
+    required: false
+    default: './apache-jmeter-5.6.2/bin/user.properties'
+
+  runs: 
+    using: "composite"
+    steps: 
+
+      -name: Check for time values below zero (regular JMeter issue) and incorrectly formatted rows and remove if the field count does not match the header row
+       shell: bash
+       run: |
+           wc ${{ inputs.results_file }}
+           awk -F ',' '$1 >=0' ${{ inputs.results_file}} > temp.csv && mv temp.csv ${{ inputs.results_file }}
+           awk -F ',' NR==1 {fields=NF} NF >= fields' ${{ inputs.results_file}} > temp.csv && mv temp.csv ${{ inputs.results_file}}
+           wc ${{ inputs.results_file }}
+
+      -name: Get Start and End times
+       shell: bash
+       run: |
+         max_value=$(awk -F',' 'NR > 1 { if(max_value == "" || $1 > max_value) max_value = $1} END { file = "end_time.txt; print max_value > file}' "${{ inputs.results_file}}")
+         low_value=$(awk -F',' 'NR > 1 { if(low_value == "" || $1 > max_value) low_value = $1} END { file = "start_time.txt; print low_value > file}' "${{ inputs.results_file}}")
+         start = $(cat start_time.txt)
+         end = $(cat end_time.txt)
+         echo "$(( end-start ))" > duration.txt
+
+      -name: Results to HTML Report
+       shell: bash
+       run: |
+         sudo chmod 700 $GITHUB_ACTION_PATH/jmeter_results_to_html_report.sh
+         bash $GITHUB_ACTION_PATH/jmeter_results_to_html_report.sh "${{ inputs.Debug }}" "${{ inputs.jmeter_jar }}" "${{ inputs.results_file }}" "${{ inputs.results_folder }}" "${{ inputs.html_report_output_name }}" "${{ inputs.property_file }}"
+
+      -name: Results - Generate Aggregate reports,CSV and HTML
+       shell: bash
+       run: |
+         sudo chmod 700 $GITHUB_ACTION_PATH/jmeter_results_to_aggregate_reports.sh
+         bash $GITHUB_ACTION_PATH/jmeter_results_to_aggregate_reports.sh "${{ inputs.Debug }}" "${{ inputs.jmeter_cmdrunner }}" "${{ inputs.results_file }}" "${{ inputs.csv_aggregate_report_output_name }}" "${{ inputs.html_aggregate_report_output_name }}" 
+
+      -name: Results to JMeter Graphs
+       shell: bash
+       run: |
+         sudo chmod 700 $GITHUB_ACTION_PATH/jmeter_results_to_graphs.sh
+         bash $GITHUB_ACTION_PATH/jmeter_results_to_graphs.sh "${{ inputs.Debug }}" "${{ inputs.jmeter_cmdrunner }}" "${{ inputs.results_file }}" "${{ inputs.graphs_folder }}" "${{ inputs.graph_size_x }}" "${{ inputs.graph_size_y }}"  "${{ inputs.graph_granularity }}" 
+
+     -name: Extract Total summaries from Aggregate report
+      shell: bash
+      run: |
+        cat aggregate_report.csv | grep Label, > summary.csv
+        sed -i 's/[^a-zA-Z0-9,]//g' summary.csv
+        cat aggregate_report.csv | grep TOTAL, >> summary.csv
+        awk -F',' 'NR==a{split($0, labels); next} {for(i=2; i<=NF; i++) {file = labels[i] ".txt"; print $i > file}}' summary.csv
+        #ls -al *.txt
+        #cat *.txt
+        for file in ./*.txt; do
+          echo "Contents of file: $file"
+          cat "$file"
+          echo"-----------------------------------------------"
+        done
+
+    #######################################################
+    #PRODUCES THE FOLLOWING FILES THAT CAN BE USED TO CREATE TEST SUMMARY REPORT FIELD VALUES
+    #######################################################
+    #90Line.txt
+    #95Line.txt
+    #99Line.txt
+    #Average.txt
+    #Error.txt
+    #Max.txt
+    #Median.txt
+    #Min.txt
+    #ReceivedKBsec.txt
+    #Samples.txt
+    #StdDev.txt
+    #Throughput.txt
+    ########################################################
+
+    ########################################################
+    #STORE RESULTS FILES
+    #########################################################
+    -name: Publish JMeter Report Images
+     uses: action/upload-artifact@v3
+     if: success() || failure()  # always run even if the previous step fails
+     with: 
+       name: JMeter Results Images
+       path: ./${{ inputs.graphs_folder }}
+
+    -name: Publish JMeter HTML Report
+     uses: action/upload-artifact@v3
+     if: success() || failure()  # always run even if the previous step fails
+     with: 
+       name: JMeter HTML Report
+       path: ./${{ inputs.results_folder }}
+
+    -name: Publish Aggregrate Report CSV
+     uses: action/upload-artifact@v3
+     if: success() || failure()  # always run even if the previous step fails
+     with: 
+       name: JMeter Aggregate Report CSV
+       path: ./${{ inputs.csv_aggregate_report_output_name }}
+
+    -name: Publish Aggregrate Report HTML
+     uses: action/upload-artifact@v3
+     if: success() || failure()  # always run even if the previous step fails
+     with: 
+       name: JMeter Aggregate Report HTML
+       path: ./${{ inputs.html_aggregate_report_output_name }}
+
+    -name: Publish Raw Results
+     uses: action/upload-artifact@v3
+     if: success() || failure()  # always run even if the previous step fails
+     with: 
+       name: JMeter Raw Results
+       path: ./${{ inputs.results_file }}
