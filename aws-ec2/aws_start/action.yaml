@@ -1,0 +1,54 @@
+name: 'Setup Performance Controller and Injectors AWS machines'
+description: 'Setup Performance Controller and Injectors AWS machines'
+inputs: 
+  server_size :
+    description: 'AWS Server Size'
+    required: true
+    default: 't2.micro'
+  image_id : 
+    description: 'AWS AMI ID'
+    required: true
+    default: 'ami-'#provide the ami number of aws
+  key_name :
+    description: 'SSH Key Name stored in AWS'
+    required: true
+    default: 'NONPROD_AWS_EC2_Test'
+  iam_role : 
+    description: 'IAM role to attach to EC2 server for SSM'
+    required: true
+    default: 'nonprod-jmeter-iam-role'
+  security_group :
+    description: 'AWS EC2 security group to limit input and output routes'
+    required: true
+    default: ' ' #provide secutiry group details
+  subnet : 
+    description: 'AWS EC2 subnet'
+    required: true
+    default: ' ' # provide subnet details
+  injector_count : 
+    description: 'Number of injectors to start'
+    required: true
+    default: 1
+
+runs: 
+  using: "composite"
+  steps:
+    -name: Start Controller
+    shell: bash
+    run: |
+      aws ec2 run-intsances\
+      --instance-type "${{ inputs.server_sizee }}" \
+      --key-name ${{ inputs.key_name }}\
+      --subnet-id ${{ inputs.subnet }} \
+      --image-id $ ${{ inputs.image_id }} \
+      --security-group-ids ${{ inputs.security_group }} > machine_setup.txt
+
+    -name: Start Injector(s)
+    shell: bash
+    run: |
+      aws ec2 run-intsances --count "${{ inputs.injector_count }}" \
+      --instance-type "${{ inputs.server_sizee }}" \
+      --key-name ${{ inputs.key_name }}\
+      --subnet-id ${{ inputs.subnet }} \
+      --image-id $ ${{ inputs.image_id }} \
+      --security-group-ids ${{ inputs.security_group }} > injectors_setup.txt
