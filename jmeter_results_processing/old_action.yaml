@@ -1,0 +1,102 @@
+name: 'JMeter_Results_Processing'
+description: 'Script to add file to page'
+inputs:
+  debug:
+    description: 'Debug Enabled?'
+    required: true
+  jmeter_jar: 
+    description: 'Location of Jmeter Jar'
+    required: true
+  jmeter_cmdrunner:  
+    description: 'Location of Jmeter Command Runner'
+    required: true
+  results_file:  
+    description: 'CSV Results FIle'
+    required: true
+  results_folder:  
+    description: 'Folder to be created to store Results'
+    required: true
+  graph_size_x:  
+    description: 'Graph X axis size in Pixels'
+    required: false
+    default: 800
+  graph_size_y:  
+    required: false
+    default: 800
+  graph_granularity:  
+    description: 'Resolution of graph in milliseconds'
+    required: false
+    default: 60000
+  html_report_output_name:  
+    description: 'HTML Report name'
+    required: false
+    default: 'report'
+  csv_aggregate_report_output_name:  
+    description: 'Output name of Aggregate Report CSV'
+    required: false
+    default: 'aggregate_report.csv'
+  html_aggregate_report_output_name:  
+    description: 'Output name of Aggregate Report HTML table'
+    required: false
+    default: 'aggregate_report.html'
+  property_file:
+    description: 'Properties file to generate a specific HTML report'
+    required: false
+    default: ./Properties/user.propeties
+    
+runs:
+  using: "composite"
+  steps:
+  
+    - name : Results to HTML Report
+      shell: bash
+      run: |         
+        sudo chmod 700 $GITHUB_ACTION_PATH/jmeter_results_to_html_report.sh
+        bash $GITHUB_ACTION_PATH/jmeter_results_to_html_report.sh "${{ inputs.Debug }}" "${{ inputs.jmeter_jar }}" "${{ inputs.results_file}}" "${{ inputs.results_folder }}" "${{ inputs.html_report_output_name }}" "${{ inputs.property_file }}"
+
+    - name : Results - Generate Aggregate reports, CSV and HTML
+      shell: bash
+      run: |         
+        sudo chmod 700 $GITHUB_ACTION_PATH/jmeter_results_to_aggregate_reports.sh
+        bash $GITHUB_ACTION_PATH/jmeter_results_to_aggregate_reports.sh "${{ inputs.Debug }}" "${{ inputs.jmeter_cmdrunner }}" "${{ inputs.results_file}}" "${{ inputs.csv_aggregate_report_output_name }}" "${{ inputs.html_aggregate_report_output_name }}"
+
+    - name : Results to JMeter Graphs
+      shell: bash
+      run: |         
+        sudo chmod 700 $GITHUB_ACTION_PATH/jmeter_results_to_graphs.sh
+        bash $GITHUB_ACTION_PATH/jmeter_results_to_graphs.sh "${{ inputs.Debug }}" "${{ inputs.jmeter_cmdrunner }}" "${{ inputs.results_file}}" "${{ inputs.results_folder }}" "${{ inputs.graph_size_x }}" "${{ inputs.graph_size_y }}" "${{ inputs.graph_granularity }}"
+
+    - name: Publish JMeter Raw Results
+      uses: actions/upload-artifact@v3
+      if: success() || failure() # always run even if the previous step fails
+      with:
+        name: JMeter Raw Results
+        path: ${{ inputs.results_file}}
+
+    - name: Publish JMeter Report Images
+      uses: actions/upload-artifact@v3
+      if: success() || failure() # always run even if the previous step fails
+      with:
+        name: JMeter Results Images
+        path: images.zip
+          
+    - name: Publish JMeter HTML Report 
+      uses: actions/upload-artifact@v3
+      if: success() || failure() # always run even if the previous step fails
+      with:
+        name: JMeter HTML Report
+        path: report.zip
+
+    - name: Publish Aggregate Report CSV
+      uses: actions/upload-artifact@v3
+      if: success() || failure() # always run even if the previous step fails
+      with:
+        name: JMeter Aggregate Report CSV
+        path: ${{ inputs.csv_aggregate_report_output_name }}
+
+    - name: Publish Aggregate Report HTML
+      uses: actions/upload-artifact@v3
+      if: success() || failure() # always run even if the previous step fails
+      with:
+        name: JMeter Aggregate Report HTML
+        path: ${{ inputs.html_aggregate_report_output_name }}
