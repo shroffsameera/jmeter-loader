@@ -1,0 +1,67 @@
+name: 'Setup Performance Controller and Injectors AWS Machines'
+description: 'Setup Performance Controller and Injectors AWS Machines'
+inputs:
+  server_size :   
+    description: 'AWS Server Size'
+    required: true
+    default: 't2.micro'
+  ami_id :   
+    description: 'AWS AMI ID'
+    required: true
+    default: 'ami-'
+  key_name :   
+    description: 'SSH Key name stored in AWS'
+    required: true
+    default: 'KEY_NAME'
+  iam_role :   
+    description: 'IAM role to attach to EC2 server for SSM'
+    required: true
+    default: 'IAM'
+  security_group :   
+    description: 'AWS EC2 Security group to limit input and output routes'
+    required: true
+    default: ''
+  subnet :   
+    description: 'AWS EC2 Subnet'
+    required: true
+    default: 'subnet-'
+  injector_count :   
+    description: 'Number of Injectors to Start'
+    required: true
+    default: 1
+    
+runs:
+  using: "composite"
+  steps:
+
+    - name: Write tfvars file
+      shell: bash
+      run: |
+        echo "server_size=\"${{ inputs.server_size }}\"" > tfvars.tfvars
+        echo "ami_id=\"${{ inputs.ami_id }}\"" >> tfvars.tfvars
+        echo "key_name=\"${{ inputs.key_name }}\"" >> tfvars.tfvars
+        echo "iam_role=\"${{ inputs.iam_role }}\"" >> tfvars.tfvars
+        echo "security_group=\"${{ inputs.security_group }}\"" >> tfvars.tfvars
+        echo "subnet=\"${{ inputs.subnet }}\"" >> tfvars.tfvars
+        echo "injector_count=${{ inputs.injector_count }}" >> tfvars.tfvars
+        cat tfvars.tfvars
+  
+    - name: Setup terraform
+      uses: hashicorp/setup-terraform@v2
+      
+    - name: Init and Apply Terraform (Start AWS Servers)
+      shell: bash
+      run: |
+        mv tfvars.tfvars ./aws-ec2/aws_start_terraform/
+        cd ./aws-ec2/aws_start_terraform
+        pwd 
+        ls -al
+        terraform init 
+        terraform plan -var-file="tfvars.tfvars" -out=./aws-ec2/aws_start_terraform/tfplan
+        terraform apply -auto-approve tfplan
+       
+        ls -al
+        # terraform output -json -state=tfplan > tfoutput.json
+        # instance_ids=$(jq -r '.instance_ids.value' tfoutput.json)
+        # cat tfoutput.json
+        
