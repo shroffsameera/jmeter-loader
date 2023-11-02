@@ -1,0 +1,133 @@
+name: 'Setup Performance Self Hosted Runner AWS Machine'
+description: 'Setup Performance Self Hosted Runner AWS Machine'
+inputs:
+  server_size :   
+    description: 'AWS Server Size'
+    required: true
+    default: 't2.micro'
+  image_id :   
+    description: 'AWS AMI ID'
+    required: true
+    default: ''
+  key_name :   
+    description: 'SSH Key name stored in AWS'
+    required: true
+    default: 'key name'
+  iam_role :   
+    description: 'IAM role to attach to EC2 server for SSM'
+    required: true
+    default: 'iam role'
+  security_group :   
+    description: 'AWS EC2 Security group to limit input and output routes'
+    required: true
+    default: ''
+  subnet :   
+    description: 'AWS EC2 Subnet'
+    required: true
+    default: 'subnet'
+  injector_count :   
+    description: 'Number of Injectors to Start'
+    required: true
+    default: 1
+    
+runs:
+  using: "composite"
+  steps:
+    - name : Start Self Hosted Runner
+      shell : bash
+      run: |
+          aws ec2 run-instances \
+          --instance-type "${{ inputs.server_size }}" \
+          --key-name ${{ inputs.key_name }} \
+          --subnet-id ${{ inputs.subnet }} \
+          --image-id ${{ inputs.image_id }} \
+          --security-group-ids ${{ inputs.security_group }} > machine_setup.txt
+          
+
+    - name : Extract Data from New Servers
+      shell : bash
+      run: |
+          #Get Self Hosted Runner instance ID
+          cat machine_setup.txt | jq -r '.Instances[].InstanceId' > instance_id.txt
+          #cat injectors_setup.txt 
+
+          #Store the injector ip addresses as a list
+          #cat ./injectors_setup.txt | jq -r '.Instances[].PrivateIpAddress' > ./injector_ip_adresses.txt
+          
+          #Store the injector ip addresses as a csv for JMeter -R remote injectors command
+          #cat ./injectors_setup.txt | jq -r '.Instances[].PrivateIpAddress' | paste -sd"," - > ./injector_ip_csv.csv
+          
+          #Store the injector instance IDs as a list
+          #cat ./injectors_setup.txt | jq -r '.Instances[].InstanceId' > ./injector_instance_id.txt
+          
+          #Store the injector instance IDs as a csv for any SSM commands
+          #cat ./injectors_setup.txt | jq -r '.Instances[].InstanceId' | paste -sd"," - > ./injector_instance_id_csv.csv
+          
+          #Store the injector instance IDs as a space seperated for any SSM commands
+          #cat ./injectors_setup.txt | jq -r '.Instances[].InstanceId' | paste -sd" " - > ./injector_instance_id_space.csv
+
+
+          #Concat all the instance ids into one file
+          cat instance_id.txt > combined_instance_id.txt
+          #cat injector_instance_id.txt >> combined_instance_id.txt
+          
+          #Store the instance IDs in a EC2 stop command file
+          sed  -e :a -e '$!N; s/\n/ /; ta' combined_instance_id.txt > stop_instances.txt
+          cat combined_instance_id.txt
+          cat stop_instances.txt
+          
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: save_aws_instances_details
+        path: |
+           *.csv
+           *.txt
+    - name : Tag Controller and injectors
+      shell : bash
+      run: |
+          #Add name tag to Controller
+          aws ec2 create-tags --resources $(cat instance_id.txt) --tags Key="Name",Value="self-hosted-runner-performance-$(date +%d/%m/%Y-%H:%M:%S)"
+          #Loop listing Connections command to injectors
+      
+
+ 
+          
+    - name : All EC2 instances, Wait for start up, Add User Profile
+      shell : bash
+      run: |
+          #Loop listing Connections command to injectors
+          # Read the file line by line and store each line as a variable
+          while IFS= read -r line; do
+             instance_id="$line"
+             aws ec2 wait instance-status-ok --instance-ids ${instance_id}
+             aws ec2 wait system-status-ok --instance-ids ${instance_id}
+             #Add role to instance - APPEARS TO BE 1 INSTANCE AT A TIME!!!!
+             aws ec2 associate-iam-instance-profile --instance-id ${instance_id} --iam-instance-profile Name=${{ inputs.iam_role }}
+          done < ./combined_instance_id.txt
+          sleep 60
+
+           
+    # - name : Injectors SSM Get Agent Version 
+      # shell : bash
+      # run: |           
+          # #Injectors
+
+          # echo "Printing information commands below"
+          # pwd
+          # ls -lah
+          # grep -iR "dev.key"
+
+        #   while IFS= read -r line; do
+          #    instance_id="$line"
+             # echo "Printing information commands below"
+             # pwd
+             # ls -lah
+             # grep -iR "dev.key"
+            #  echo "Line of injector_instance_id.txt ${instance_id}"
+             # until aws ssm describe-instance-information --filters "Key=InstanceIds,Values=${instance_id}" | grep -q 'AgentVersion';
+             # do
+               # sleep 5
+             # done
+          # done < ./combined_instance_id.txt
+          # sleep 60
